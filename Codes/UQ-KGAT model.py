@@ -1,4 +1,13 @@
 # -*- coding: utf-8 -*-
+"""
+UQ-GAT-based Material Defect Prediction System
+-------------------------------------------
+集成图注意力网络(GAT)，用于材料缺陷预测
+包含数据加载、模型构建、训练、预测
+"""
+
+# ==================== 核心库导入模块 ====================
+# 功能：导入必要的深度学习、数据处理和优化算法库
 import torch
 from torch.utils.data import Dataset
 from scipy import sparse
@@ -9,7 +18,7 @@ import torch.optim as optim
 from torch.autograd import Variable
 import torch.nn.functional as F
 from torch.nn import Parameter
-import geatpy as ea  # 导入geatpy库
+import geatpy as ea  # 多目标优化算法库
 import time
 from sklearn.neural_network import MLPRegressor
 from sklearn.model_selection import train_test_split
@@ -34,14 +43,15 @@ from scipy.optimize import curve_fit
 from sklearn.model_selection import GridSearchCV
 import joblib
 
-# 导入数据
+# ==================== 数据加载与预处理模块 ====================
+# 功能：加载Excel数据文件，提取特征和标签，并进行标准化处理
 start1 = time.perf_counter()
 # 读取CSV数据
 df = pd.read_excel("AM_Data.xlsx")
-feature_name = [column for column in df][1:]
-sample_data = df.values[:, :]
-Data_feature = sample_data[:, 1:-1]
-Data_target = sample_data[:, -1]
+feature_name = [column for column in df][1:]  # 提取特征名称
+sample_data = df.values[:, :]  # 获取数据矩阵
+Data_feature = sample_data[:, 1:-1]  # 特征数据
+Data_target = sample_data[:, -1]  # 目标标签
 print('Data_feature = ', Data_feature.tolist())
 print('Data_target = ', Data_target.tolist())
 start_time1 = time.time()
@@ -50,7 +60,10 @@ start_time1 = time.time()
 ss_feature = preprocessing.StandardScaler()
 Data_feature_nor = ss_feature.fit_transform(Data_feature)
 
-# 邻接矩阵
+# ==================== 图结构数据模块 ====================
+# 功能：构建图邻接矩阵，定义图数据处理函数
+
+# 邻接矩阵加载
 neighbor_matrix = []
 csv_file1 = csv.reader(open('data_matrix.csv',encoding='utf-8-sig'))
 for content in csv_file1:
@@ -61,23 +74,46 @@ for content in csv_file1:
 print('neighbor_matrix=', neighbor_matrix)
 neighbor_matrix = np.array(neighbor_matrix)
 
-
+# 功能：将特征矩阵转换为适合图神经网络的稀疏矩阵格式
 def manipulate_feature(feature, max_node, features):
+    """
+    转换特征为图节点特征矩阵
+    参数：
+        feature: 原始特征数组
+        max_node: 图中最大节点数
+        features: 每个节点的特征维度
+    返回：scipy稀疏矩阵格式的节点特征
+    """
     feature = feature.reshape(-1, 1)
     feature[:, [0]] = (feature[:, [0]])
     result = np.zeros((max_node, features))
     result[:feature.shape[0], :feature.shape[1]] = feature
     feature = result
     feature = sparse.csr_matrix(feature)
-
     return feature
 
+# 功能：邻接矩阵标准化处理
 def normalize_adj(neighbor, max_node, feature):
-    np.fill_diagonal(neighbor, 1)
+    """
+    邻接矩阵对称归一化
+    参数：
+        neighbor: 原始邻接矩阵
+        max_node: 图中最大节点数
+        feature: 特征矩阵（用于维度匹配）
+    返回：稀疏矩阵格式的标准化邻接矩阵
+    """
+    np.fill_diagonal(neighbor, 1)  # 添加自连接
     neighbor = sparse.csr_matrix(neighbor)
     return neighbor
 
+# 功能：标签矩阵标准化
 def normalize_t_label(label_matrix):
+    """
+    标签Z-score标准化
+    参数：
+        label_matrix: 原始标签矩阵
+    返回：标准化后的标签矩阵，保存均值和标准差
+    """
     label_mean = np.mean(label_matrix)
     label_std = np.std(label_matrix)
     label_matrix = (label_matrix - label_mean) / label_std
@@ -87,31 +123,51 @@ def normalize_t_label(label_matrix):
 
     return label_matrix
 
-
+# 功能：计算平均绝对百分比误差
 def macro_avg_err(Y_prime, Y):
+    """
+    计算预测值与真实值的平均绝对百分比误差
+    参数：
+        Y_prime: 预测值
+        Y: 真实值
+    返回：MAPE误差值
+    """
     if type(Y_prime) is np.ndarray:
         return np.sum(np.abs(Y - Y_prime)) / np.sum(np.abs(Y))
     return torch.sum(torch.abs(Y - Y_prime)) / torch.sum(torch.abs(Y))
 
+# 功能：张量与变量转换函数
 def tensor_to_variable(x):
+    """
+    将PyTorch张量转换为Variable，支持GPU加速
+    参数：
+        x: 输入张量
+    返回：Variable对象
+    """
     if torch.cuda.is_available():
         x = x.cuda()
     return Variable(x.float())
 
 def variable_to_numpy(x):
+    """
+    将Variable转换回numpy数组
+    参数：
+        x: 输入Variable
+    返回：numpy数组
+    """
     if torch.cuda.is_available():
         x = x.cpu()
     x = x.data.numpy()
     return x
 
-def cnn_feature(feature):
-    feature = feature.reshape(-1, 1)
-    feature = sparse.csr_matrix(feature)
+# ==================== 图数据集类模块 ====================
+# 功能：定义用于GAT模型的PyTorch Dataset类
 
-    return feature
-
-# 生成图结构
 class GraphTrainSet(Dataset):
+    """
+    训练集图数据结构
+    功能：将特征和标签转换为图结构数据，用于GAT模型训练
+    """
     def __init__(self, train_x, train_y):
         max_node = 23
         num_features = 1
@@ -136,7 +192,6 @@ class GraphTrainSet(Dataset):
         self.train_node_attr_matrix = np.array(train_node_attr_matrix)
         self.train_label_matrix = np.array(train_label_matrix)
 
-
     def __len__(self):
         return len(self.train_adjacency_matrix)
 
@@ -144,14 +199,16 @@ class GraphTrainSet(Dataset):
         train_adjacency_matrix = self.train_adjacency_matrix[idx].todense()
         train_node_attr_matrix = self.train_node_attr_matrix[idx].todense()
         train_label_matrix = self.train_label_matrix[idx]
-        # print('--------------------')
         train_adjacency_matrix = torch.from_numpy(train_adjacency_matrix)
         train_node_attr_matrix = torch.from_numpy(train_node_attr_matrix)
         train_label_matrix = torch.from_numpy(train_label_matrix)
-
         return train_adjacency_matrix, train_node_attr_matrix, train_label_matrix
 
 class GraphTestSet(Dataset):
+    """
+    测试集图数据结构
+    功能：与训练集类似，用于模型评估
+    """
     def __init__(self, test_x, test_y):
         max_node = 23
         num_features = 1
@@ -176,7 +233,6 @@ class GraphTestSet(Dataset):
         self.test_node_attr_matrix = np.array(test_node_attr_matrix)
         self.test_label_matrix = np.array(test_label_matrix)
 
-
     def __len__(self):
         return len(self.test_adjacency_matrix)
 
@@ -184,14 +240,16 @@ class GraphTestSet(Dataset):
         test_adjacency_matrix = self.test_adjacency_matrix[idx].todense()
         test_node_attr_matrix = self.test_node_attr_matrix[idx].todense()
         test_label_matrix = self.test_label_matrix[idx]
-        # print('--------------------')
         test_adjacency_matrix = torch.from_numpy(test_adjacency_matrix)
         test_node_attr_matrix = torch.from_numpy(test_node_attr_matrix)
         test_label_matrix = torch.from_numpy(test_label_matrix)
-
         return test_adjacency_matrix, test_node_attr_matrix, test_label_matrix
 
 class GAT_Set(Dataset):
+    """
+    预测用图数据结构
+    功能：仅包含图结构，不包含标签，用于模型推理阶段
+    """
     def __init__(self, train_x):
         max_node = 23
         num_features = 1
@@ -213,7 +271,6 @@ class GAT_Set(Dataset):
         self.train_adjacency_matrix = np.array(train_adjacency_matrix)
         self.train_node_attr_matrix = np.array(train_node_attr_matrix)
 
-
     def __len__(self):
         return len(self.train_adjacency_matrix)
 
@@ -222,10 +279,16 @@ class GAT_Set(Dataset):
         train_node_attr_matrix = self.train_node_attr_matrix[idx].todense()
         train_adjacency_matrix = torch.from_numpy(train_adjacency_matrix)
         train_node_attr_matrix = torch.from_numpy(train_node_attr_matrix)
-
         return train_adjacency_matrix, train_node_attr_matrix
 
+# ==================== 图注意力网络模型模块 ====================
+# 功能：定义GAT网络各层和完整模型架构
+
 class nconv(nn.Module):
+    """
+    图卷积操作基类
+    功能：实现基本的图卷积运算
+    """
     def __init__(self):
         super(nconv, self).__init__()
 
@@ -234,7 +297,10 @@ class nconv(nn.Module):
         return x.contiguous()
 
 class GraphAttentionLayer(nn.Module):
-
+    """
+    图注意力层
+    功能：实现多头注意力机制，计算节点间的注意力权重
+    """
     def __init__(self, in_features, out_features, relu, concat=True):
         super(GraphAttentionLayer, self).__init__()
         self.in_features = in_features
@@ -242,16 +308,18 @@ class GraphAttentionLayer(nn.Module):
         self.relu = relu
         self.concat = concat
 
+        # 权重矩阵初始化
         self.W = nn.Parameter(torch.zeros(size=(in_features, out_features)))
         nn.init.xavier_uniform_(self.W.data, gain=1.414)
 
+        # 注意力系数矩阵初始化
         self.a = nn.Parameter(torch.zeros(size=(2 * out_features, 1)))
         nn.init.xavier_uniform_(self.a.data, gain=1.414)
 
         self.act = nn.LeakyReLU(relu)
         self.dropout = 0.0
+        
     def forward(self, inp, adj):
-
         h = torch.matmul(inp, self.W)
         N = h.size()[1]
         a_input = torch.cat([h.repeat(1, 1, N).view(-1, N * N, self.out_features), h.repeat(1, N, 1)], dim=-1).view(-1,N,N,2 * self.out_features)
@@ -271,8 +339,11 @@ class GraphAttentionLayer(nn.Module):
         return self.__class__.__name__ + ' (' + str(self.in_features) + ' -> ' + str(self.out_features) + ')'
 
 class GATModel_1layer(nn.Module):
+    """
+    单层多头GAT模型
+    功能：集成多个注意力头，实现特征融合
+    """
     def __init__(self, n_feat, n_hid, n_class, n_heads, relu):
-
         super(GATModel_1layer, self).__init__()
         self.n_class = n_class
         self.dropout = 0.1
@@ -294,43 +365,53 @@ class GATModel_1layer(nn.Module):
         return x
 
 class GAT(nn.Module):
+    """
+    完整GAT模型
+    功能：包含图注意力层、全连接层和不确定性估计模块
+    """
     def __init__(self, p, logvar, relu):
         super(GAT, self).__init__()
         self.p = p
         self.logvar = logvar
 
+        # 图注意力模块
         self.graph_modules = nn.Sequential(OrderedDict([
             ('GAT_layer_0', GATModel_1layer(n_feat=1, n_hid=2, n_class=0, n_heads=2, relu=relu)),
         ]))
 
+        # 全连接层
         self.fc1 = nn.Sequential(
             nn.Linear(in_features=23 * 2 * 2, out_features=128),
             nn.ReLU(),
             nn.Dropout(0.69)
         )
 
+        # 预测前处理层
         self.pre = nn.Sequential(
             nn.Linear(in_features=128, out_features=16),
             nn.GELU(),
         )
 
-        self.var = nn.Sequential(
-        )
+        # 方差估计层
+        self.var = nn.Sequential()
 
+        # 预测输出层
         self.predict = nn.Sequential(
             nn.Linear(in_features=16, out_features=1),
             nn.ReLU(),
-        )  # output layer
+        )
 
+        # 方差输出层
         self.get_var = nn.Sequential(
             nn.Linear(in_features=16, out_features=1),
-        )  # output layer
+        )
 
     def forward(self, node_attr_matrix, adjacency_matrix):
         adjacency_matrix = adjacency_matrix.float()
         train_x = node_attr_matrix.float()
         x = train_x[:, :23, :]
 
+        # 图注意力特征提取
         for (name, module) in self.graph_modules.named_children():
             if 'GAT_layer' in name:
                 x = module(x, adj=adjacency_matrix)
@@ -339,11 +420,11 @@ class GAT(nn.Module):
 
         x = x.view(x.size()[0], -1)
         xc = self.fc1(x)
-        # get y_mean
+        # 获取预测均值
         x = self.pre(xc)
         y = self.predict(x)
 
-        # get var
+        # 获取预测方差
         xv = self.var(x)
         if self.var:
             var = self.get_var(xv)
@@ -351,7 +432,14 @@ class GAT(nn.Module):
             var = torch.zeros(y.size())
         return y, var, xc
 
+# ==================== 损失函数模块 ====================
+# 功能：定义模型训练所需的损失函数 
+
 class Statistical_loss(nn.Module):
+    """
+    统计损失函数
+    功能：结合预测误差和方差的不确定性感知损失函数
+    """
     def __init__(self):
         super(Statistical_loss, self).__init__()
 
@@ -362,12 +450,27 @@ class Statistical_loss(nn.Module):
         loss = torch.mean(0.5*(torch.exp((-1)*logvar)) * (gt - pred_y)**2 + 0.5*logvar)
         return loss
 
-def train(model, train_data_loader, epochs, optimizer, criterion, scheduler, num_ens=1, beta_type=0.1,):
+# ==================== 训练与评估模块 ====================
+# 功能：模型训练、验证和预测函数
+
+def train(model, train_data_loader, epochs, optimizer, criterion, scheduler, num_ens=1, beta_type=0.1):
+    """
+    模型训练函数
+    功能：执行GAT模型训练循环，包含前向传播、损失计算和反向传播
+    参数：
+        model: 待训练的GAT模型
+        train_data_loader: 训练数据加载器
+        epochs: 训练轮数
+        optimizer: 优化器
+        criterion: 损失函数
+        scheduler: 学习率调度器
+        num_ens: 集成模型数量
+        beta_type: KL散度权重
+    """
     print(' ')
     print("*** Training started! ***")
     print(' ')
-    # max_r2 = 0
-    # early_iter = 0
+    
     for epoch in range(epochs):
         model.train()
         total_macro_loss = []
@@ -377,7 +480,6 @@ def train(model, train_data_loader, epochs, optimizer, criterion, scheduler, num
         for batch_id, (adjacency_matrix, node_attr_matrix, label_matrix) in enumerate(train_data_loader):
             adjacency_matrix = tensor_to_variable(adjacency_matrix)
             node_attr_matrix = tensor_to_variable(node_attr_matrix)
-
             label_matrix = tensor_to_variable(label_matrix)
 
             optimizer.zero_grad()
@@ -394,14 +496,21 @@ def train(model, train_data_loader, epochs, optimizer, criterion, scheduler, num
 
     return
 
-
 def get_MC_Predictions(network, data_loader, dropout=True, mc_times=64):
-
+    """
+    Monte Carlo Dropout预测函数
+    功能：通过多次采样获取预测均值、数据不确定性和模型不确定性
+    参数：
+        network: 训练好的GAT模型
+        data_loader: 数据加载器
+        dropout: 是否启用dropout
+        mc_times: Monte Carlo采样次数
+    返回：标签、预测值、数据不确定性、模型不确定性、总不确定性
+    """
     label_list, pre_list, ep_list, al_list, un_list = [], [], [], [], []
 
     for batch_id, (adjacency_matrix, node_attr_matrix, label_matrix) in enumerate(data_loader):
         adjacency_matrix = tensor_to_variable(adjacency_matrix)
-
         inputs = tensor_to_variable(node_attr_matrix)
         labels = tensor_to_variable(label_matrix)
 
@@ -419,9 +528,13 @@ def get_MC_Predictions(network, data_loader, dropout=True, mc_times=64):
             var = var.detach().cpu().numpy()
             a_u[:, :, t] = var
 
+        # 计算数据不确定性
         a_u = np.sqrt(np.exp(np.mean(a_u, axis=2)))
+        # 计算预测均值
         pred_mean = np.mean(pred_v, axis=2)
+        # 计算模型不确定性
         e_u = np.sqrt(np.var(pred_v, axis=2))
+        # 计算总不确定性
         un = a_u + e_u
 
         label_list.extend(variable_to_numpy(labels))
@@ -437,4 +550,3 @@ def get_MC_Predictions(network, data_loader, dropout=True, mc_times=64):
     un_list = np.array(un_list)
 
     return label_list, pre_list, ep_list, al_list, un_list
-
