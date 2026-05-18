@@ -1,4 +1,4 @@
-UQ‑KGAT: Uncertainty‑Quantified Knowledge‑Graph Attention Network for Material Defect Prediction
+#UQ‑KGAT: Uncertainty‑Quantified Knowledge‑Graph Attention Network for Material Defect Prediction
 https://img.shields.io/badge/python-3.9-blue.svg
 https://img.shields.io/badge/PyTorch-1.13.1%2520%252B%2520CUDA%252011.7-ee4c2c.svg
 https://img.shields.io/badge/License-Apache%25202.0-blue.svg
