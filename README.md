@@ -61,11 +61,11 @@ pip install numpy scipy pandas scikit-learn geatpy matplotlib seaborn joblib ope
 
 ## Quick Start
 
-## Data preparation
+## 1. Data preparation
 
-Place your dataset (AM_Data.xlsx) and the knowledge‑graph adjacency matrix (data_matrix.csv) in the project root directory. The spreadsheet must contain feature columns (composition + process parameters) and the target defect area fraction as the last column.
+Place your dataset `AM_Data.xlsx` and the knowledge‑graph adjacency matrix `data_matrix.csv` in the project root directory. The spreadsheet must contain feature columns (composition + process parameters) and the target defect area fraction as the last column.
 
-## Step 1: Train the UQ‑KGAT model
+## 2: Train the UQ‑KGAT model
 
 Run the training script:
 
@@ -83,21 +83,11 @@ Save the model checkpoint as Results/model state/gat_state.pth.
 
 You can adjust hyperparameters (epochs, learning rate, dropout) directly in the script.
 
-## Step 2: Train intermediate surrogate models (not included in the provided code)
+## 3: Train intermediate surrogate models
 
-The NSGA‑II optimisation script expects pre‑trained models for coarsening rate, COMSOL outputs, volume energy, and hardness (CNN‑based). You must train these separately using your own data or the same dataset. The expected checkpoint paths are:
+The NSGA‑II optimisation script expects pre‑trained models for coarsening rate, COMSOL outputs, volume energy, and hardness (CNN‑based). You must train these separately using your own data or the same dataset.
 
-`CoarseningRate Model/Results/model state/CoseningRate_state.pth`
-
-`Comsol Model/Results/model state/Comsol_state.pth`
-
-`Volume Energy Model/Results/model state/Volume energy_state.pth`
-
-`Hardness Model/Results/model state/Hardness_state.pth`
-
-If you have already trained them, ensure the paths match those in the optimisation script.
-
-## Step 3: Run multi‑objective optimisation
+## 4: Run multi‑objective optimisation
 
 ```python "Codes/Sorting algorithm NSGA-II.py"```
 
@@ -139,8 +129,6 @@ The GAT class returns both prediction mean and log‑variance; variance is learn
 
 For pure inference (without labels), use GAT_Set instead of GraphTrainSet – this is already done in the optimisation script.
 
-All random seeds are fixed for reproducibility (torch.manual_seed(3416)).
-
 ## License
 
-This project is distributed under the Apache License 2.0. See the LICENSE file for details.
+This project is distributed under the **Apache License 2.0**. See the LICENSE file for details.
