@@ -85,7 +85,7 @@ You can adjust hyperparameters (epochs, learning rate, dropout) directly in the 
 
 ## 3: Train intermediate surrogate models
 
-The NSGA‑II optimisation script expects pre‑trained models for coarsening rate, COMSOL outputs, volume energy, and hardness (CNN‑based). You must train these separately using your own data or the same dataset.
+The NSGA‑II optimisation script expects pre‑trained models for thermodynamic, solidification information, volume energy, and hardness (CNN‑based). You must train these separately using your own data or the same dataset.
 
 ## 4: Run multi‑objective optimisation
 
