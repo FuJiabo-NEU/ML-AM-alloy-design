@@ -110,11 +110,11 @@ UQ‑KGAT/
 ├── Codes/
 │   ├── UQ-KGAT model.py          # GAT training & uncertainty estimation
 │   └── Sorting algorithm NSGA-II.py  # Multi‑objective optimisation pipeline
-├── data_matrix.csv               # Adjacency matrix of the physical knowledge graph
+├── data_matrix.csv               # Adjacency matrix of the physical knowledge graph (not included; refer to Supplementary Figure 4)
 ├── AM_Data.xlsx                  # Example dataset (not included; request from authors)
-├── Results/
-│   ├── model state/
-│   │   └── gat_state.pth         # Trained UQ‑KGAT weights
+├── Results/                      # Example directory; create it manually
+│   ├── model state/              # Example directory; create it manually
+│   │   └── gat_state.pth         # Example trained UQ-KGAT weights saved after retraining with the code and data
 │   ├── GA_dAta/                  # Optimisation history
 │   └── all targets *.csv         # Pareto front solutions
 ├── README.md
